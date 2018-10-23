@@ -61,10 +61,11 @@
 		<property name="applicationContextSchedulerContextKey"  value="applicationContextKey" />
 		<property name="configLocation" value="classpath:quartz.properties"/>
 	</bean>
-
+	<!-- 这个调度中心，在启动的时候，会做很多初始化的工作 ，比如：执行器信息，注册机器列表等信息 -->
 	<bean id="xxlJobDynamicScheduler" class="com.xxl.job.admin.core.schedule.XxlJobDynamicScheduler" init-method="init" destroy-method="destroy" >
 		<!-- (轻易不要变更“调度器名称”, 任务创建时会绑定该“调度器名称”) -->
 		<property name="scheduler" ref="quartzScheduler"/>
+		<!-- 用于调度中心和执行器之间通信的时候做数据加密 -->
 		<property name="accessToken" value="${xxl.job.accessToken}" />
 	</bean>
 	

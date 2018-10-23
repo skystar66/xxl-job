@@ -67,11 +67,21 @@ public final class XxlJobDynamicScheduler implements ApplicationContextAware {
         XxlJobDynamicScheduler.adminBiz = applicationContext.getBean(AdminBiz.class);
 	}
 
+    /**
+     * init 初始化
+     *
+     * @return
+     * @throws SchedulerException
+     */
+
+
     // ---------------------- init + destroy ----------------------
     public void init() throws Exception {
+        //// 启动自动注册线程， 获取类型为自动注册的执行器信息registry，完成机器的自动注册与发现
         // admin registry monitor run
         JobRegistryMonitorHelper.getInstance().start();
 
+        //// 启动失败日志监控线程
         // admin monitor run
         JobFailMonitorHelper.getInstance().start();
 
@@ -107,6 +117,15 @@ public final class XxlJobDynamicScheduler implements ApplicationContextAware {
 
     // ---------------------- executor-client ----------------------
     private static ConcurrentHashMap<String, ExecutorBiz> executorBizRepository = new ConcurrentHashMap<String, ExecutorBiz>();
+
+    /**
+     * getExecutorBiz 获取执行器实例
+     *
+     * @param address 执行器地址
+     * @return
+     * @throws SchedulerException
+     */
+
     public static ExecutorBiz getExecutorBiz(String address) throws Exception {
         // valid
         if (address==null || address.trim().length()==0) {
@@ -115,11 +134,15 @@ public final class XxlJobDynamicScheduler implements ApplicationContextAware {
 
         // load-cache
         address = address.trim();
+        //查看缓存里面是否存在，如果存在则不需要再去创建executorBiz了
         ExecutorBiz executorBiz = executorBizRepository.get(address);
         if (executorBiz != null) {
             return executorBiz;
         }
 
+        logger.info("缓存中没有executorBiz 实例，开始调用执行器获取代理对象。。。。。。。。。。。。。。。。。。。。。。。。。。。。。。。");
+
+        // 创建ExecutorBiz的代理对象，重点在这个里面。
         // set-cache
         executorBiz = (ExecutorBiz) new NetComClientProxy(ExecutorBiz.class, address, accessToken).getObject();
         executorBizRepository.put(address, executorBiz);
@@ -177,15 +200,16 @@ public final class XxlJobDynamicScheduler implements ApplicationContextAware {
 	}
 
     /**
-     * addJob
+     * addJob 添加任务
      *
-     * @param jobName
-     * @param jobGroup
-     * @param cronExpression
+     * @param jobName 任务名称
+     * @param jobGroup 任务组
+     * @param cronExpression 任务处触发Cron
      * @return
      * @throws SchedulerException
      */
 	public static boolean addJob(String jobName, String jobGroup, String cronExpression) throws SchedulerException {
+
     	// TriggerKey : name + group
         TriggerKey triggerKey = TriggerKey.triggerKey(jobName, jobGroup);
         JobKey jobKey = new JobKey(jobName, jobGroup);
@@ -213,12 +237,12 @@ public final class XxlJobDynamicScheduler implements ApplicationContextAware {
         // schedule : jobDetail + cronTrigger
         Date date = scheduler.scheduleJob(jobDetail, cronTrigger);
 
-        logger.info(">>>>>>>>>>> addJob success, jobDetail:{}, cronTrigger:{}, date:{}", jobDetail, cronTrigger, date);
+        logger.info(">>>>>>>>>>> 添加定时任务成功, 任务详情:{}, cronTrigger:{}, date:{}", jobDetail, cronTrigger, date);
         return true;
     }
     
     /**
-     * rescheduleJob
+     * rescheduleJob 刷新任务信息
      *
      * @param jobGroup
      * @param jobName
@@ -249,7 +273,7 @@ public final class XxlJobDynamicScheduler implements ApplicationContextAware {
             CronScheduleBuilder cronScheduleBuilder = CronScheduleBuilder.cronSchedule(cronExpression).withMisfireHandlingInstructionDoNothing();
             oldTrigger = oldTrigger.getTriggerBuilder().withIdentity(triggerKey).withSchedule(cronScheduleBuilder).build();
 
-            // rescheduleJob
+            // rescheduleJob 刷新 更新任务
             scheduler.rescheduleJob(triggerKey, oldTrigger);
         } else {
             // CronTrigger : TriggerKey + cronExpression
@@ -267,15 +291,16 @@ public final class XxlJobDynamicScheduler implements ApplicationContextAware {
             HashSet<Trigger> triggerSet = new HashSet<Trigger>();
             triggerSet.add(cronTrigger);
 
+            //添加
             scheduler.scheduleJob(jobDetail, triggerSet, true);
         }
 
-        logger.info(">>>>>>>>>>> resumeJob success, JobGroup:{}, JobName:{}", jobGroup, jobName);
+        logger.info(">>>>>>>>>>> 刷新 resumeJob 任务 success, JobGroup:{}, JobName:{}", jobGroup, jobName);
         return true;
     }
     
     /**
-     * unscheduleJob
+     * unscheduleJob 移除任务
      *
      * @param jobName
      * @param jobGroup
@@ -288,13 +313,13 @@ public final class XxlJobDynamicScheduler implements ApplicationContextAware {
         boolean result = false;
         if (checkExists(jobName, jobGroup)) {
             result = scheduler.unscheduleJob(triggerKey);
-            logger.info(">>>>>>>>>>> removeJob, triggerKey:{}, result [{}]", triggerKey, result);
+            logger.info(">>>>>>>>>>> 移除 removeJob 任务 成功, triggerKey:{}, result [{}]", triggerKey, result);
         }
         return true;
     }
 
     /**
-     * pause
+     * pause 暂停任务
      *
      * @param jobName
      * @param jobGroup
@@ -309,15 +334,15 @@ public final class XxlJobDynamicScheduler implements ApplicationContextAware {
         if (checkExists(jobName, jobGroup)) {
             scheduler.pauseTrigger(triggerKey);
             result = true;
-            logger.info(">>>>>>>>>>> pauseJob success, triggerKey:{}", triggerKey);
+            logger.info(">>>>>>>>>>> 暂停 pauseJob 任务 success, triggerKey:{}", triggerKey);
         } else {
-        	logger.info(">>>>>>>>>>> pauseJob fail, triggerKey:{}", triggerKey);
+        	logger.info(">>>>>>>>>>> 暂停 pauseJob 任务 fail, triggerKey:{}", triggerKey);
         }
         return result;
     }
     
     /**
-     * resume
+     * resume 恢复任务
      *
      * @param jobName
      * @param jobGroup
@@ -332,9 +357,9 @@ public final class XxlJobDynamicScheduler implements ApplicationContextAware {
         if (checkExists(jobName, jobGroup)) {
             scheduler.resumeTrigger(triggerKey);
             result = true;
-            logger.info(">>>>>>>>>>> resumeJob success, triggerKey:{}", triggerKey);
+            logger.info(">>>>>>>>>>> 恢复 resumeJob 任务 success, triggerKey:{}", triggerKey);
         } else {
-        	logger.info(">>>>>>>>>>> resumeJob fail, triggerKey:{}", triggerKey);
+        	logger.info(">>>>>>>>>>> 恢复 resumeJob 任务 fail, triggerKey:{}", triggerKey);
         }
         return result;
     }

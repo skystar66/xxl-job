@@ -25,7 +25,7 @@ public class JettyServerHandler extends AbstractHandler {
 
 	@Override
 	public void handle(String target, Request baseRequest, HttpServletRequest request, HttpServletResponse response) throws IOException, ServletException {
-		
+
 		// invoke
         RpcResponse rpcResponse = doInvoke(request);
 
@@ -51,8 +51,9 @@ public class JettyServerHandler extends AbstractHandler {
 				rpcResponse.setError("RpcRequest byte[] is null");
 				return rpcResponse;
 			}
+            // 通过hessian的序列化机制，反序列化得到字符串数据
 			RpcRequest rpcRequest = (RpcRequest) HessianSerializer.deserialize(requestBytes, RpcRequest.class);
-
+            logger.info("开始启动JettyServerHandler 服务，收到请求参数：{}",rpcRequest);
 			// invoke
 			RpcResponse rpcResponse = NetComServerFactory.invokeService(rpcRequest, null);
 			return rpcResponse;

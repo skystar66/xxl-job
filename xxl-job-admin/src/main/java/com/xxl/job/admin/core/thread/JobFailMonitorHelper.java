@@ -37,14 +37,17 @@ public class JobFailMonitorHelper {
 	private Thread monitorThread;
 	private volatile boolean toStop = false;
 	public void start(){
+		// 启动线程
 		monitorThread = new Thread(new Runnable() {
 
 			@Override
 			public void run() {
 				// monitor
 				while (!toStop) {
+					logger.info("监听调度中心日志，取出可用日志==================================================================");
 					try {
 						List<Integer> jobLogIdList = new ArrayList<Integer>();
+						// 从队列中拿出所有可用的 jobLogIds
 						int drainToNum = JobFailMonitorHelper.instance.queue.drainTo(jobLogIdList);
 
 						if (CollectionUtils.isNotEmpty(jobLogIdList)) {
@@ -52,11 +55,14 @@ public class JobFailMonitorHelper {
 								if (jobLogId==null || jobLogId==0) {
 									continue;
 								}
+								//从数据库取出该日志信息
 								XxlJobLog log = XxlJobDynamicScheduler.xxlJobLogDao.load(jobLogId);
 								if (log == null) {
 									continue;
 								}
+								//任务触发成功， 但是JobHandle 还没有返回结果
 								if (IJobHandler.SUCCESS.getCode() == log.getTriggerCode() && log.getHandleCode() == 0) {
+									//将 JobLogId 放入队列 ， 继续监控
 									// job running
 									JobFailMonitorHelper.monitor(jobLogId);
 									logger.debug(">>>>>>>>>>> job monitor, job running, JobLogId:{}", jobLogId);
@@ -68,7 +74,7 @@ public class JobFailMonitorHelper {
 										|| IJobHandler.FAIL_RETRY.getCode() == log.getHandleCode() )*/ {
 
 									// job fail,
-
+									// 任务执行失败， 执行发送邮件等预警措施
 									// 1、fail retry
 									XxlJobInfo info = XxlJobDynamicScheduler.xxlJobInfoDao.loadById(log.getJobId());
 
@@ -89,8 +95,9 @@ public class JobFailMonitorHelper {
 								}*/
 							}
 						}
-
+						// 停顿一下10s
 						TimeUnit.SECONDS.sleep(10);
+						logger.info("每10s监听一下调度组中心日志===================================================================");
 					} catch (Exception e) {
 						logger.error("job monitor error:{}", e);
 					}

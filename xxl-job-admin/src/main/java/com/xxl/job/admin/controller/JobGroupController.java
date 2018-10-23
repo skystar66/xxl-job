@@ -10,6 +10,8 @@ import com.xxl.job.core.biz.model.ReturnT;
 import com.xxl.job.core.enums.RegistryConfig;
 import org.apache.commons.collections4.CollectionUtils;
 import org.apache.commons.lang3.StringUtils;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Controller;
 import org.springframework.ui.Model;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -29,6 +31,9 @@ import java.util.List;
 @RequestMapping("/jobgroup")
 public class JobGroupController {
 
+
+	private static Logger logger = LoggerFactory.getLogger(JobGroupController.class);
+
 	@Resource
 	public XxlJobInfoDao xxlJobInfoDao;
 	@Resource
@@ -47,6 +52,9 @@ public class JobGroupController {
 	@RequestMapping("/save")
 	@ResponseBody
 	public ReturnT<String> save(XxlJobGroup xxlJobGroup){
+
+		logger.info("注册执行器===================================================================================");
+
 
 		// valid
 		if (xxlJobGroup.getAppName()==null || StringUtils.isBlank(xxlJobGroup.getAppName())) {

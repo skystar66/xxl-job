@@ -10,7 +10,7 @@ import java.util.concurrent.TimeUnit;
 
 
 /**
- * 任务Handler示例（Bean模式）
+ * 任务Handler示例（spring boot Bean模式）
  *
  * 开发步骤：
  * 1、继承"IJobHandler"：“com.xxl.job.core.handler.IJobHandler”；
@@ -18,7 +18,7 @@ import java.util.concurrent.TimeUnit;
  * 3、注册到执行器工厂：添加“@JobHandler(value="自定义jobhandler名称")”注解，注解value值对应的是调度中心新建任务的JobHandler属性的值。
  * 4、执行日志：需要通过 "XxlJobLogger.log" 打印执行日志；
  *
- * @author xuxueli 2015-12-19 19:43:36
+ * @author xuliang 2018-10-17 10:43:36
  */
 @JobHandler(value="demoJobHandler")
 @Component
@@ -26,7 +26,7 @@ public class DemoJobHandler extends IJobHandler {
 
 	@Override
 	public ReturnT<String> execute(String param) throws Exception {
-		XxlJobLogger.log("XXL-JOB, Hello World.");
+		XxlJobLogger.log("XXL-JOB, Hello World."+param);
 
 		for (int i = 0; i < 5; i++) {
 			XxlJobLogger.log("beat at:" + i);

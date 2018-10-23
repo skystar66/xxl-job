@@ -58,8 +58,8 @@ public class JobThread extends Thread{
 	public ReturnT<String> pushTriggerQueue(TriggerParam triggerParam) {
 		// avoid repeat
 		if (triggerLogIdSet.contains(triggerParam.getLogId())) {
-			logger.info(">>>>>>>>>>> repeate trigger job, logId:{}", triggerParam.getLogId());
-			return new ReturnT<String>(ReturnT.FAIL_CODE, "repeate trigger job, logId:" + triggerParam.getLogId());
+			logger.info(">>>>>>>>>>> 覆盖 trigger job 参数, logId:{}", triggerParam.getLogId());
+			return new ReturnT<String>(ReturnT.FAIL_CODE, "覆盖 trigger job  参数, logId:" + triggerParam.getLogId());
 		}
 
 		triggerLogIdSet.add(triggerParam.getLogId());
@@ -78,6 +78,7 @@ public class JobThread extends Thread{
 		 * 在阻塞出抛出InterruptedException异常,但是并不会终止运行的线程本身；
 		 * 所以需要注意，此处彻底销毁本线程，需要通过共享变量方式；
 		 */
+		logger.info(">>>>>>>>>>> xxl-job 终止 JobThread, jobId:{}, handler:{}，stopReason：{}", new Object[]{jobId, handler,stopReason});
 		this.toStop = true;
 		this.stopReason = stopReason;
 	}
@@ -95,34 +96,43 @@ public class JobThread extends Thread{
 
     	// init
     	try {
+			// 执行IJobHandler 中的init方法，以后如果有一些，在执行handler之前的初始化的工作，可以覆写这个方法
 			handler.init();
 		} catch (Throwable e) {
     		logger.error(e.getMessage(), e);
 		}
 
+		// stop 为fasle的时候执行
 		// execute
 		while(!toStop){
 			running = false;
+			// 执行次数
 			idleTimes++;
 
             TriggerParam triggerParam = null;
             ReturnT<String> executeResult = null;
             try {
+				// 从linkBlockingQueue中获取数据 执行参数，如果3秒获取不到，则返回null
 				// to check toStop signal, we need cycle, so wo cannot use queue.take(), instand of poll(timeout)
 				triggerParam = triggerQueue.poll(3L, TimeUnit.SECONDS);
 				if (triggerParam!=null) {
 					running = true;
+					// 将运行次数清空，保证运行90秒空闲之后会被移除
 					idleTimes = 0;
+					// 移除日志信息
 					triggerLogIdSet.remove(triggerParam.getLogId());
 
 					// log filename, like "logPath/yyyy-MM-dd/9999.log"
+					// 创建日志
 					String logFileName = XxlJobFileAppender.makeLogFileName(new Date(triggerParam.getLogDateTim()), triggerParam.getLogId());
 					XxlJobFileAppender.contextHolder.set(logFileName);
+
+					// 写入分片信息， 将当前机器的分片标记和分片总数写入到ShardingUtil中，到时候，可以在handler中通过这个工具类获取
 					ShardingUtil.setShardingVo(new ShardingUtil.ShardingVO(triggerParam.getBroadcastIndex(), triggerParam.getBroadcastTotal()));
 
 					// execute
 					XxlJobLogger.log("<br>----------- xxl-job job execute start -----------<br>----------- Param:" + triggerParam.getExecutorParams());
-
+					// 执行。。。
 					if (triggerParam.getExecutorTimeout() > 0) {
 						// limit timeout
 						Thread futureThread = null;
@@ -159,10 +169,12 @@ public class JobThread extends Thread{
 
 				} else {
 					if (idleTimes > 30) {
+						// 每3秒获取一次数据，获取30次都没有获取到数据之后，则线程被清除  终止线程
 						XxlJobExecutor.removeJobThread(jobId, "excutor idel times over limit.");
 					}
 				}
 			} catch (Throwable e) {
+            	//表示 线程被终止
 				if (toStop) {
 					XxlJobLogger.log("<br>----------- JobThread toStop, stopReason:" + stopReason);
 				}
@@ -175,30 +187,35 @@ public class JobThread extends Thread{
 				XxlJobLogger.log("<br>----------- JobThread Exception:" + errorMsg + "<br>----------- xxl-job job execute end(error) -----------");
 			} finally {
                 if(triggerParam != null) {
-                    // callback handler info
+                    // callback handler info  线程正在运行
                     if (!toStop) {
+						// handler执行完成之后，将结果写入到日志里面去， 就是在执行器启动的时候，会建立一个线程，用来实时处理日志，此处是将结果和logID放入到队列里面去，
+						//  让日志线程异步的去处理
                         // commonm
                         TriggerCallbackThread.pushCallBack(new HandleCallbackParam(triggerParam.getLogId(), triggerParam.getLogDateTim(), executeResult));
                     } else {
+                    	//线程被终止
                         // is killed
+						//业务运行中，被强制终止 回调给调度中心
                         ReturnT<String> stopResult = new ReturnT<String>(ReturnT.FAIL_CODE, stopReason + " [job running，killed]");
                         TriggerCallbackThread.pushCallBack(new HandleCallbackParam(triggerParam.getLogId(), triggerParam.getLogDateTim(), stopResult));
                     }
                 }
             }
         }
-
+		// 当线程被终止之后，队列里面剩余的未执行的任务，将被终止的这些任务放入队列，供日志监控线程来处理，回调给调度中心
 		// callback trigger request in queue
 		while(triggerQueue !=null && triggerQueue.size()>0){
 			TriggerParam triggerParam = triggerQueue.poll();
 			if (triggerParam!=null) {
 				// is killed
+
 				ReturnT<String> stopResult = new ReturnT<String>(ReturnT.FAIL_CODE, stopReason + " [job not executed, in the job queue, killed.]");
 				TriggerCallbackThread.pushCallBack(new HandleCallbackParam(triggerParam.getLogId(), triggerParam.getLogDateTim(), stopResult));
 			}
 		}
 
-		// destroy
+		// destroy  销毁
 		try {
 			handler.destroy();
 		} catch (Throwable e) {

@@ -35,6 +35,9 @@ public class JobApiController {
             }
             RpcRequest rpcRequest = (RpcRequest) HessianSerializer.deserialize(requestBytes, RpcRequest.class);
 
+
+            logger.info("调度中心，job-admin  api  收到请求，请求参数：{}",rpcRequest);
+
             // invoke
             RpcResponse rpcResponse = NetComServerFactory.invokeService(rpcRequest, null);
             return rpcResponse;

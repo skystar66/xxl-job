@@ -36,14 +36,25 @@ public class NetComServerFactory  {
 	 */
 	private static Map<String, Object> serviceMap = new HashMap<String, Object>();
 	private static String accessToken;
+
+
 	public static void putService(Class<?> iface, Object serviceBean){
 		serviceMap.put(iface.getName(), serviceBean);
 	}
+
+
 	public static void setAccessToken(String accessToken) {
 		NetComServerFactory.accessToken = accessToken;
 	}
 	public static RpcResponse invokeService(RpcRequest request, Object serviceBean) {
+
+
+		logger.info("服务端NetComServerFactory invokeService 方法收到请求，   收到请求参数：{}",request);
+
+		// request中的数据结构，可以看上面源码分析中提到的 NetComClientProxy中的getObjct 方法，此处不再赘述
 		if (serviceBean==null) {
+			//  这个serviceBean 就是在执行器启动的时候，initExecutorServer （） 这个方法中，将一个ExecutorBiz的实例放进去了，此处通过
+			// classname来获取这个实例
 			serviceBean = serviceMap.get(request.getClassName());
 		}
 		if (serviceBean == null) {
@@ -51,27 +62,34 @@ public class NetComServerFactory  {
 		}
 
 		RpcResponse response = new RpcResponse();
-
+		// 判断是否超时
 		if (System.currentTimeMillis() - request.getCreateMillisTime() > 180000) {
 			response.setResult(new ReturnT<String>(ReturnT.FAIL_CODE, "The timestamp difference between admin and executor exceeds the limit."));
 			return response;
 		}
+		// 数据校验，验证token是否匹配，前提是token不为空
 		if (accessToken!=null && accessToken.trim().length()>0 && !accessToken.trim().equals(request.getAccessToken())) {
 			response.setResult(new ReturnT<String>(ReturnT.FAIL_CODE, "The access token[" + request.getAccessToken() + "] is wrong."));
 			return response;
 		}
 
 		try {
+			// 获取class
 			Class<?> serviceClass = serviceBean.getClass();
+			// 拿到请求中的方法名字， 此处这个值 是  run 方法
 			String methodName = request.getMethodName();
+			//方法类型
 			Class<?>[] parameterTypes = request.getParameterTypes();
+			// 方法参数
 			Object[] parameters = request.getParameters();
-
+			// spring的工具类， 创建一个fastClass 实例
 			FastClass serviceFastClass = FastClass.create(serviceClass);
 			FastMethod serviceFastMethod = serviceFastClass.getMethod(methodName, parameterTypes);
-
+			// 拿到方法之后执行方法的invoke ,
 			Object result = serviceFastMethod.invoke(serviceBean, parameters);
 
+
+			logger.info("服务端接受请求 NetComServerFactory invokeService 方法  执行成功， 返回执行结果：{}",result);
 			response.setResult(result);
 		} catch (Throwable t) {
 			t.printStackTrace();

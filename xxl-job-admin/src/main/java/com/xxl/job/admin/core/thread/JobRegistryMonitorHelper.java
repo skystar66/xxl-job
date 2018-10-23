@@ -30,24 +30,36 @@ public class JobRegistryMonitorHelper {
 	private Thread registryThread;
 	private volatile boolean toStop = false;
 	public void start(){
+		//创建一个线程
 		registryThread = new Thread(new Runnable() {
 			@Override
 			public void run() {
+				// 当toStop 为false时进入该循环。s
+                logger.info("调度中心 toStop的值为====================================================================================={}",toStop);
 				while (!toStop) {
+				    logger.info("进入检测自动注册器的循环。。。。。。。。。。。。。。。。。。。。。。。。。。。。。。。。。。。。。。。。。。");
 					try {
+						// // 获取类型为自动注册的执行器地址列表
 						// auto registry group
 						List<XxlJobGroup> groupList = XxlJobDynamicScheduler.xxlJobGroupDao.findByAddressType(0);
 						if (CollectionUtils.isNotEmpty(groupList)) {
-
+						     // 删除 90秒之内没有更新信息的注册机器， 90秒没有心跳信息返回，代表机器已经出现问题，故移除
+                            logger.info("开始检测自动注册机器，删除90s内没有更新的注册机器，90秒没有心跳返回，代表机器已经出现问题");
 							// remove dead address (admin/executor)
 							XxlJobDynamicScheduler.xxlJobRegistryDao.removeDead(RegistryConfig.DEAD_TIMEOUT);
 
 							// fresh online address (admin/executor)
 							HashMap<String, List<String>> appAddressMap = new HashMap<String, List<String>>();
+							// 查询在90秒之内有过更新的机器列表
 							List<XxlJobRegistry> list = XxlJobDynamicScheduler.xxlJobRegistryDao.findAll(RegistryConfig.DEAD_TIMEOUT);
 							if (list != null) {
+								//循环注册机器列表，  根据执行器不同，将这些机器列表区分拿出来
 								for (XxlJobRegistry item: list) {
+									// 判断该机器注册信息RegistryGroup ，RegistType 是否是EXECUTOR , EXECUTOR 代表该机器是注册到执行器上面的
+
+									// RegistType  分为两种， ADMIN 和EXECUTOR
 									if (RegistryConfig.RegistType.EXECUTOR.name().equals(item.getRegistryGroup())) {
+										// 获取注册的执行器 KEY  （也就是执行器）
 										String appName = item.getRegistryKey();
 										List<String> registryList = appAddressMap.get(appName);
 										if (registryList == null) {
@@ -57,20 +69,25 @@ public class JobRegistryMonitorHelper {
 										if (!registryList.contains(item.getRegistryValue())) {
 											registryList.add(item.getRegistryValue());
 										}
+										// 收集 机器信息，根据执行器做区分
 										appAddressMap.put(appName, registryList);
 									}
 								}
 							}
 
+							// //  遍历执行器列表
 							// fresh group address
 							for (XxlJobGroup group: groupList) {
+								// 通过执行器的APP_NAME  拿出他下面的集群机器地址
 								List<String> registryList = appAddressMap.get(group.getAppName());
 								String addressListStr = null;
 								if (CollectionUtils.isNotEmpty(registryList)) {
+									// 转为为String，　通过逗号分隔
 									Collections.sort(registryList);
 									addressListStr = StringUtils.join(registryList, ",");
 								}
 								group.setAddressList(addressListStr);
+								// 将 这个执行器的 集群机器地址列表，写入到数据库
 								XxlJobDynamicScheduler.xxlJobGroupDao.update(group);
 							}
 						}
@@ -78,6 +95,7 @@ public class JobRegistryMonitorHelper {
 						logger.error("job registry instance error:{}", e);
 					}
 					try {
+					    logger.info("开始等待30s之后 再次检测。。。。。。。。。。。。。。。。。。。。。。。。。。。。。。。。。。。。。。。。。。。。");
 						TimeUnit.SECONDS.sleep(RegistryConfig.BEAT_TIMEOUT);
 					} catch (InterruptedException e) {
 						logger.error("job registry instance error:{}", e);
@@ -86,6 +104,7 @@ public class JobRegistryMonitorHelper {
 			}
 		});
 		registryThread.setDaemon(true);
+		//启动线程
 		registryThread.start();
 	}
 

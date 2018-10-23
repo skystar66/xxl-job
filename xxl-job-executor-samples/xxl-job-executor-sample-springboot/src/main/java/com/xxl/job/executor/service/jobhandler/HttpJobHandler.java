@@ -18,7 +18,7 @@ import java.io.IOException;
 /**
  * 跨平台Http任务
  *
- * @author xuxueli 2018-09-16 03:48:34
+ * @author xuliang 2018-10-17 10:43:36
  */
 @JobHandler(value="httpJobHandler")
 @Component

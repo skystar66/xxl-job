@@ -47,10 +47,11 @@ public class ExecutorRegistryThread extends Thread {
         registryThread = new Thread(new Runnable() {
             @Override
             public void run() {
-
+                logger.info("注册中心 toStop的值为====================================================================================={}",toStop);
                 // registry
                 while (!toStop) {
                     try {
+                        logger.info("进入注册自动注册器的循环。。。。。。。。。。。。。。。。。。。。。。。。。。。。。。。。。。。。。。。。。。");
                         RegistryParam registryParam = new RegistryParam(RegistryConfig.RegistType.EXECUTOR.name(), appName, executorAddress);
                         for (AdminBiz adminBiz: XxlJobExecutor.getAdminBizList()) {
                             try {
@@ -72,6 +73,7 @@ public class ExecutorRegistryThread extends Thread {
                     }
 
                     try {
+                        logger.info("开始等待30s之后 再次注册更新。。。。。。。。。。。。。。。。。。。。。。。。。。。。。。。。。。。。。。。。。。。。");
                         TimeUnit.SECONDS.sleep(RegistryConfig.BEAT_TIMEOUT);
                     } catch (InterruptedException e) {
                         logger.warn(">>>>>>>>>>> xxl-job, executor registry thread interrupted, error msg:{}", e.getMessage());

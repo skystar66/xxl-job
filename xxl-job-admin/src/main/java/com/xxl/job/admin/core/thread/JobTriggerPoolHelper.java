@@ -48,13 +48,13 @@ public class JobTriggerPoolHelper {
     private static JobTriggerPoolHelper helper = new JobTriggerPoolHelper();
 
     /**
-     * @param jobId
-     * @param triggerType
-     * @param failRetryCount
-     * 			>=0: use this param
-     * 			<0: use param from job info config
-     * @param executorShardingParam
-     * @param executorParam
+     * @param jobId 任务ID
+     * @param triggerType 触发类型Cron
+     * @param failRetryCount 失败重试次数
+     * 			>=0: use this param 使用参数
+     * 			<0: use param from job info config 从配置文件中取
+     * @param executorShardingParam 执行分片数
+     * @param executorParam 执行参数
      *          null: use job param
      *          not null: cover job param
      */

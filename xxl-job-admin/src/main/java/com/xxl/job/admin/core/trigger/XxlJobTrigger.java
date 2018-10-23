@@ -29,18 +29,19 @@ public class XxlJobTrigger {
     /**
      * trigger job
      *
-     * @param jobId
-     * @param triggerType
-     * @param failRetryCount
-     * 			>=0: use this param
-     * 			<0: use param from job info config
-     * @param executorShardingParam
-     * @param executorParam
+     * @param jobId 任务ID
+     * @param triggerType 触发类型 Cron
+     * @param failRetryCount 重试次数
+     * 			>=0: use this param 使用参数
+     * 			<0: use param from job info config 实用配置文件参数
+     * @param executorShardingParam 执行分片参数
+     * @param executorParam 执行任务参数
      *          null: use job param
      *          not null: cover job param
      */
     public static void trigger(int jobId, TriggerTypeEnum triggerType, int failRetryCount, String executorShardingParam, String executorParam) {
         // load data
+        // 通过JobId从数据库中查询该任务的具体信息
         XxlJobInfo jobInfo = XxlJobDynamicScheduler.xxlJobInfoDao.loadById(jobId);
         if (jobInfo == null) {
             logger.warn(">>>>>>>>>>>> trigger fail, jobId invalid，jobId={}", jobId);
@@ -49,7 +50,9 @@ public class XxlJobTrigger {
         if (executorParam != null) {
             jobInfo.setExecutorParam(executorParam);
         }
+        //重试次数 当重试次数为小于0时，取页面配置的该任务重试次数
         int finalFailRetryCount = failRetryCount>=0?failRetryCount:jobInfo.getExecutorFailRetryCount();
+        // 获取该类型的执行器信息
         XxlJobGroup group = XxlJobDynamicScheduler.xxlJobGroupDao.load(jobInfo.getJobGroup());
 
         // sharding param
@@ -62,58 +65,67 @@ public class XxlJobTrigger {
                 shardingParam[1] = Integer.valueOf(shardingArr[1]);
             }
         }
+        // 判断路由策略  是否为  分片广播模式
         if (ExecutorRouteStrategyEnum.SHARDING_BROADCAST==ExecutorRouteStrategyEnum.match(jobInfo.getExecutorRouteStrategy(), null)
                 && CollectionUtils.isNotEmpty(group.getRegistryList()) && shardingParam==null) {
             for (int i = 0; i < group.getRegistryList().size(); i++) {
                 processTrigger(group, jobInfo, finalFailRetryCount, triggerType, i, group.getRegistryList().size());
             }
         } else {
+            // 出分片模式外，其他的路由策略均走这里
             if (shardingParam == null) {
                 shardingParam = new int[]{0, 1};
             }
+            // 默认分片标记为0
+            // 默认分片总数为1
             processTrigger(group, jobInfo, finalFailRetryCount, triggerType, shardingParam[0], shardingParam[1]);
         }
 
     }
 
     /**
-     * @param group                     job group, registry list may be empty
-     * @param jobInfo
-     * @param finalFailRetryCount
-     * @param triggerType
-     * @param index                     sharding index
-     * @param total                     sharding index
+     * @param group                     job group, registry list may be empty 执行器信息
+     * @param jobInfo                   任务信息
+     * @param finalFailRetryCount       失败重试次数
+     * @param triggerType               触发类型Cron
+     * @param index                     sharding index 分片索引
+     * @param total                     sharding index 分片总数
      */
     private static void processTrigger(XxlJobGroup group, XxlJobInfo jobInfo, int finalFailRetryCount, TriggerTypeEnum triggerType, int index, int total){
 
         // param
+        // 匹配运行模式
         ExecutorBlockStrategyEnum blockStrategy = ExecutorBlockStrategyEnum.match(jobInfo.getExecutorBlockStrategy(), ExecutorBlockStrategyEnum.SERIAL_EXECUTION);  // block strategy
+        //  获取路由策略
         ExecutorRouteStrategyEnum executorRouteStrategyEnum = ExecutorRouteStrategyEnum.match(jobInfo.getExecutorRouteStrategy(), null);    // route strategy
         String shardingParam = (ExecutorRouteStrategyEnum.SHARDING_BROADCAST==executorRouteStrategyEnum)?String.valueOf(index).concat("/").concat(String.valueOf(total)):null;
 
+        //定义日志信息
         // 1、save log-id
         XxlJobLog jobLog = new XxlJobLog();
         jobLog.setJobGroup(jobInfo.getJobGroup());
-        jobLog.setJobId(jobInfo.getId());
-        jobLog.setTriggerTime(new Date());
+        jobLog.setJobId(jobInfo.getId());//任务ID
+        jobLog.setTriggerTime(new Date());//调度时间
         XxlJobDynamicScheduler.xxlJobLogDao.save(jobLog);
         logger.debug(">>>>>>>>>>> xxl-job trigger start, jobId:{}", jobLog.getId());
 
+        //初始化触发参数信息
         // 2、init trigger-param
         TriggerParam triggerParam = new TriggerParam();
-        triggerParam.setJobId(jobInfo.getId());
-        triggerParam.setExecutorHandler(jobInfo.getExecutorHandler());
-        triggerParam.setExecutorParams(jobInfo.getExecutorParam());
-        triggerParam.setExecutorBlockStrategy(jobInfo.getExecutorBlockStrategy());
-        triggerParam.setExecutorTimeout(jobInfo.getExecutorTimeout());
-        triggerParam.setLogId(jobLog.getId());
-        triggerParam.setLogDateTim(jobLog.getTriggerTime().getTime());
-        triggerParam.setGlueType(jobInfo.getGlueType());
+        triggerParam.setJobId(jobInfo.getId());//任务ID
+        triggerParam.setExecutorHandler(jobInfo.getExecutorHandler());//Bean模式的spring容器服务
+        triggerParam.setExecutorParams(jobInfo.getExecutorParam());//执行参数（页面配置）
+        triggerParam.setExecutorBlockStrategy(jobInfo.getExecutorBlockStrategy());//运行模式
+        triggerParam.setExecutorTimeout(jobInfo.getExecutorTimeout());//执行超时时间
+        triggerParam.setLogId(jobLog.getId());//日志ID
+        triggerParam.setLogDateTim(jobLog.getTriggerTime().getTime());//日志触发时间
+        triggerParam.setGlueType(jobInfo.getGlueType());//
         triggerParam.setGlueSource(jobInfo.getGlueSource());
         triggerParam.setGlueUpdatetime(jobInfo.getGlueUpdatetime().getTime());
-        triggerParam.setBroadcastIndex(index);
-        triggerParam.setBroadcastTotal(total);
+        triggerParam.setBroadcastIndex(index);// 设置分片标记
+        triggerParam.setBroadcastTotal(total);// 设置分片总数
 
+        //初始化执行器地址(选取路由地址)
         // 3、init address
         String address = null;
         ReturnT<String> routeAddressResult = null;
@@ -134,6 +146,7 @@ public class XxlJobTrigger {
             routeAddressResult = new ReturnT<String>(ReturnT.FAIL_CODE, I18nUtil.getString("jobconf_trigger_address_empty"));
         }
 
+        //远程执行
         // 4、trigger remote executor
         ReturnT<String> triggerResult = null;
         if (address != null) {
@@ -160,16 +173,20 @@ public class XxlJobTrigger {
         triggerMsgSb.append("<br><br><span style=\"color:#00c0ef;\" > >>>>>>>>>>>"+ I18nUtil.getString("jobconf_trigger_run") +"<<<<<<<<<<< </span><br>")
                 .append((routeAddressResult!=null&&routeAddressResult.getMsg()!=null)?routeAddressResult.getMsg()+"<br><br>":"").append(triggerResult.getMsg()!=null?triggerResult.getMsg():"");
 
+        //远程执行完毕 更新log日志
         // 6、save log trigger-info
-        jobLog.setExecutorAddress(address);
-        jobLog.setExecutorHandler(jobInfo.getExecutorHandler());
-        jobLog.setExecutorParam(jobInfo.getExecutorParam());
-        jobLog.setExecutorShardingParam(shardingParam);
-        jobLog.setExecutorFailRetryCount(finalFailRetryCount);
+        jobLog.setExecutorAddress(address);//执行器地址
+        jobLog.setExecutorHandler(jobInfo.getExecutorHandler()); //执行器 handler
+        jobLog.setExecutorParam(jobInfo.getExecutorParam()); // 执行参数
+        jobLog.setExecutorShardingParam(shardingParam); // 执行分片参数
+        jobLog.setExecutorFailRetryCount(finalFailRetryCount); //失败重试次数
         //jobLog.setTriggerTime();
-        jobLog.setTriggerCode(triggerResult.getCode());
-        jobLog.setTriggerMsg(triggerMsgSb.toString());
+        jobLog.setTriggerCode(triggerResult.getCode()); // 调度返回结果 触发是否成功
+        jobLog.setTriggerMsg(triggerMsgSb.toString()); //调度返回结果
         XxlJobDynamicScheduler.xxlJobLogDao.updateTriggerInfo(jobLog);
+
+
+        // 将日志ID，放入队列， 日志监控线程来监控任务的执行状态
 
         // 7、monitor trigger
         JobFailMonitorHelper.monitor(jobLog.getId());
@@ -178,14 +195,16 @@ public class XxlJobTrigger {
 
     /**
      * run executor
-     * @param triggerParam
-     * @param address
+     * @param triggerParam 执行参数
+     * @param address 执行器地址
      * @return
      */
     public static ReturnT<String> runExecutor(TriggerParam triggerParam, String address){
         ReturnT<String> runResult = null;
         try {
+            //创建一个ExcutorBiz的对象，重点在这个方法里面
             ExecutorBiz executorBiz = XxlJobDynamicScheduler.getExecutorBiz(address);
+            // 这个run 方法不会最终执行，仅仅只是为了触发 proxy object 的 invoke方法，同时将目标的类型传送给服务端， 因为在代理对象的invoke的方法里面没有执行目标对象的方法
             runResult = executorBiz.run(triggerParam);
         } catch (Exception e) {
             logger.error(">>>>>>>>>>> xxl-job trigger error, please check if the executor[{}] is running.", address, e);
@@ -198,6 +217,7 @@ public class XxlJobTrigger {
         runResultSB.append("<br>msg：").append(runResult.getMsg());
 
         runResult.setMsg(runResultSB.toString());
+        logger.info("调用执行器方法，执行器返回结果：【{}】=============================================================",runResult);
         return runResult;
     }
 

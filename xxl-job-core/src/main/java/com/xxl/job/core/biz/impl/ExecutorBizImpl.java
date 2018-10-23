@@ -68,21 +68,34 @@ public class ExecutorBizImpl implements ExecutorBiz {
 
     @Override
     public ReturnT<String> run(TriggerParam triggerParam) {
+
+
+        logger.info("执行器代理对象ExecutorBiz run方法收到请求，请求参数：{}",triggerParam);
+
+        // 通过参数中的JobID， 从本地线程库里面获取线程 ( 第一次进来是没有线程的，jobThread为空 ，
+        // 如果线程运行90秒空闲之后，那么也会被移除)
+        // 本地线程库，本质上就是一个ConcurrentHashMap<Integer, JobThread>
+
         // load old：jobHandler + jobThread
         JobThread jobThread = XxlJobExecutor.loadJobThread(triggerParam.getJobId());
-        IJobHandler jobHandler = jobThread!=null?jobThread.getHandler():null;
+        IJobHandler jobHandler = jobThread!=null?jobThread.getHandler():null;//执行器serviceBean
         String removeOldReason = null;
 
+        //匹配任务类型， BEAN是我们自定义JOBHANDLE的模式
         // valid：jobHandler + jobThread
         GlueTypeEnum glueTypeEnum = GlueTypeEnum.match(triggerParam.getGlueType());
         if (GlueTypeEnum.BEAN == glueTypeEnum) {
 
+            // 通过参数中的handlerName从本地内存中获取handler实例 （在执行器启动的时候，是把所有带有@JobHandler的实例通过name放入到一个map中的 ）
             // new jobhandler
             IJobHandler newJobHandler = XxlJobExecutor.loadJobHandler(triggerParam.getExecutorHandler());
 
+            // 如果修改了任务的handler， name此处会默认把以前老的handler清空，后面会以最新的newJobHandler为准
             // valid old jobThread
             if (jobThread!=null && jobHandler != newJobHandler) {
                 // change handler, need kill old thread
+                //更换JobHandler或更换任务模式,终止旧任务线程
+                logger.info("更换JobHandler或更换任务模式,终止旧任务线程");
                 removeOldReason = "change jobhandler or glue type, and terminate the old job thread.";
 
                 jobThread = null;
@@ -99,6 +112,7 @@ public class ExecutorBizImpl implements ExecutorBiz {
 
         } else if (GlueTypeEnum.GLUE_GROOVY == glueTypeEnum) {
 
+            // 此处说的是，任务模式为 GLUE JAVA版， 最后是通过GROOVY的方式，将代码生成class类，最终执行，最终原理和上面一直
             // valid old jobThread
             if (jobThread != null &&
                     !(jobThread.getHandler() instanceof GlueJobHandler
@@ -122,6 +136,7 @@ public class ExecutorBizImpl implements ExecutorBiz {
             }
         } else if (glueTypeEnum!=null && glueTypeEnum.isScript()) {
 
+            // 其他脚本执行模式，shell , python等
             // valid old jobThread
             if (jobThread != null &&
                     !(jobThread.getHandler() instanceof ScriptJobHandler
@@ -140,6 +155,7 @@ public class ExecutorBizImpl implements ExecutorBiz {
         } else {
             return new ReturnT<String>(ReturnT.FAIL_CODE, "glueType[" + triggerParam.getGlueType() + "] is not valid.");
         }
+
 
         // executor block strategy
         if (jobThread != null) {
@@ -161,13 +177,15 @@ public class ExecutorBizImpl implements ExecutorBiz {
             }
         }
 
+        // 如果jobThread为空，那么这个时候，就要注册一个线程到本地线程库里面去。 同时启动这个线程。
         // replace thread (new or exists invalid)
         if (jobThread == null) {
             jobThread = XxlJobExecutor.registJobThread(triggerParam.getJobId(), jobHandler, removeOldReason);
         }
-
+        // 将本次任务的参数 ，放入到队列里面去，供线程调度。
         // push data to queue
         ReturnT<String> pushResult = jobThread.pushTriggerQueue(triggerParam);
+        logger.info("执行器代理对象ExecutorBiz run方法处理成功，返回结果：{}",pushResult);
         return pushResult;
     }
 
